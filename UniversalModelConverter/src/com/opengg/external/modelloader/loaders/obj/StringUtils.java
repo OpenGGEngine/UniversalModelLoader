@@ -5,7 +5,7 @@
  */
 package com.opengg.external.modelloader.loaders.obj;
 
-import universalmodelconverter.loader.obj.*;
+import com.opengg.external.modelloader.loaders.obj.*;
 import com.opengg.core.model.BuilderInterface;
 import java.util.ArrayList;
 import static java.util.logging.Level.SEVERE;
