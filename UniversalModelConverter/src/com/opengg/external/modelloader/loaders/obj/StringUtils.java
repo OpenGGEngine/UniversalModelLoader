@@ -3,8 +3,10 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package universalmodelconverter.loader.obj;
+package com.opengg.external.modelloader.loaders.obj;
 
+import universalmodelconverter.loader.obj.*;
+import com.opengg.core.model.BuilderInterface;
 import java.util.ArrayList;
 import static java.util.logging.Level.SEVERE;
 import java.util.logging.Logger;

@@ -3,9 +3,11 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package universalmodelconverter;
+package com.opengg.external.modelloader;
 
-import java.awt.Desktop;
+import com.opengg.core.model.Build;
+import com.opengg.core.model.Model;
+import static com.opengg.core.util.FileUtil.getFileName;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -23,9 +25,7 @@ import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import universalmodelconverter.loader.Model;
-import universalmodelconverter.loader.obj.Build;
-import universalmodelconverter.loader.obj.OBJParser;
+import com.opengg.external.modelloader.loaders.obj.OBJParser;
 
 /**
  *
@@ -33,23 +33,18 @@ import universalmodelconverter.loader.obj.OBJParser;
  */
 public class UniversalModelConverter extends Application {
 
-    private Desktop desktop = Desktop.getDesktop();
-
     @Override
     public void start(final Stage stage) {
-        stage.setTitle("This sucks");
-
         final FileChooser fileChooser = new FileChooser();
-
         final Button openButton = new Button("Choose model...");
 
         openButton.setOnAction((final ActionEvent e) -> {
-            File file = fileChooser.showOpenDialog(stage);
-            if (file != null) {
+            File fileobj = fileChooser.showOpenDialog(stage);
+            if (fileobj != null) {
 
                try {
-                openFile(file);
-                loadFile("sd");
+                openFile(fileobj);
+                //loadFile(file);
                } catch (IOException ex) {
                    Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
                  }
@@ -92,9 +87,9 @@ public class UniversalModelConverter extends Application {
     }
 
     public void loadFile(String path) {
-
+        String pathname = getFileName(path);    
         try {
-            DataInputStream in = new DataInputStream(new FileInputStream("C:/res/textbin.txt"));
+            DataInputStream in = new DataInputStream(new FileInputStream("C:/res/" + pathname + "/" + pathname + ".bmf"));
             int s = in.readInt();
             int fbcap = in.readInt();
             for (int i = 0; i < fbcap; i++) {
