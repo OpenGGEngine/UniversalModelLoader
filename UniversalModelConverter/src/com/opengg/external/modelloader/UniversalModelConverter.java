@@ -79,11 +79,12 @@ public class UniversalModelConverter extends Application {
         }
         Model m = new Model(b);
         try {
-            m.putData();
+            String endloc = file.getAbsolutePath().replace(b.getObjectFileName(),"");
+            System.out.println(endloc);
+            m.putData(endloc);
         } catch (FileNotFoundException ex) {
             Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
         }
-        System.out.println();
     }
 
     public void loadFile(String path) {
