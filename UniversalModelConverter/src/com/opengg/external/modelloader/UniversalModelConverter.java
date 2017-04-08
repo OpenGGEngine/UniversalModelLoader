@@ -43,7 +43,6 @@ import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
@@ -54,6 +53,7 @@ import org.lwjgl.assimp.AINode;
 import org.lwjgl.assimp.AIScene;
 import org.lwjgl.assimp.AIVector3D;
 import static org.lwjgl.assimp.Assimp.aiImportFile;
+import static org.lwjgl.assimp.Assimp.aiProcess_GenNormals;
 import static org.lwjgl.assimp.Assimp.aiProcess_PreTransformVertices;
 import static org.lwjgl.assimp.Assimp.aiProcess_Triangulate;
 
@@ -66,7 +66,6 @@ public class UniversalModelConverter extends Application {
     public final ProgressBar nodelist = new ProgressBar();
     final Button openButton = new Button("Choose model...");
     public Label progress = new Label("Temp", nodelist);
-    public AtomicBoolean stop = new AtomicBoolean(true);
     public volatile double percent;
 
     public class MyRunnable implements Runnable {
@@ -81,13 +80,11 @@ public class UniversalModelConverter extends Application {
         public void run() {
             try {
                 openButton.setVisible(false);
-                stop.set(false);
                 nodelist.setVisible(true);
                 progress.setVisible(true);
                 assimpOpen(file);
                 nodelist.setVisible(false);
                 progress.setVisible(false);
-                stop.set(true);
                 openButton.setVisible(true);
                 // code in the other thread, can reference "var" variable
             } catch (IOException ex) {
@@ -108,14 +105,13 @@ public class UniversalModelConverter extends Application {
         final FileChooser fileChooser = new FileChooser();
 
         openButton.setOnAction((final ActionEvent e) -> {
-            if (stop.get()) {
-                File fileobj = fileChooser.showOpenDialog(stage);
-                if (fileobj != null) {
-                    MyRunnable myRunnable = new MyRunnable(fileobj);
-                    Thread t = new Thread(myRunnable);
-                    t.start();
-                }
+            File fileobj = fileChooser.showOpenDialog(stage);
+            if (fileobj != null) {
+                MyRunnable myRunnable = new MyRunnable(fileobj);
+                Thread t = new Thread(myRunnable);
+                t.start();
             }
+
         });
 
         final FileChooser fileChooser2 = new FileChooser();
@@ -124,20 +120,14 @@ public class UniversalModelConverter extends Application {
         openButton2.setOnAction((final ActionEvent e) -> {
             File fileobj = fileChooser2.showOpenDialog(stage);
             if (fileobj != null) {
-                //  try {
-                //  assimpOpen(fileobj);
                 try {
-//                
                     openFile(fileobj);
                 } catch (IOException ex) {
                     Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
                 }
-                // } catch (IOException ex) {
-                //     Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
-                // }
             }
         });
-        
+
         System.out.println(UniversalModelConverter.class.getResource("derpy.png").getPath().substring(1));
         Image image = new Image(UniversalModelConverter.class.getResource("derpy.png").toExternalForm());
 
@@ -153,15 +143,14 @@ public class UniversalModelConverter extends Application {
         text3.setWrappingWidth(450);
         text3.setTextAlignment(TextAlignment.JUSTIFY);
         text3.setText("Alpha Release: Materials Not Supported. Expect Bugs \n \n NOTE: When loading your OBJs with MTLs, the MTL must be in the same directory as the OBJ file. Otherwise the OBJ will not load correctly. Sometimes the program will appear to stall. This is assimp and this behavior is perfectly normal.");
-        
+
         Tab assimptab = new Tab("Assimp Loader");
         VBox box1 = new VBox(30);
-        nodelist.prefWidthProperty().bind(stage.widthProperty().subtract(200)); 
-        //hbox.getChildren().add(new Label("Tab" + i));
+        nodelist.prefWidthProperty().bind(stage.widthProperty().subtract(200));
         box1.setAlignment(Pos.TOP_CENTER);
         assimptab.setContent(box1);
         progress.setVisible(false);
-        box1.getChildren().addAll(text3,openButton,progress, nodelist);
+        box1.getChildren().addAll(text3, openButton, progress, nodelist);
 
         Text text = new Text();
         text.setFont(new Font(15));
@@ -178,17 +167,15 @@ public class UniversalModelConverter extends Application {
         text2.setTextAlignment(TextAlignment.CENTER);
         text2.setText("Legacy OBJ Loader");
 
-        
         Tab legacytab = new Tab("Legacy OBJ Loader");
         VBox box2 = new VBox(25);
 
         //hbox.getChildren().add(new Label("Tab" + i));
         box2.setAlignment(Pos.TOP_CENTER);
         legacytab.setContent(box2);
-        box2.getChildren().addAll(iv1,text2,openButton2,text);
-        
-        tabPane.getTabs().addAll(assimptab,legacytab);
-        
+        box2.getChildren().addAll(iv1, text2, openButton2, text);
+
+        tabPane.getTabs().addAll(assimptab, legacytab);
 
         // bind to take available space
         borderPane.prefHeightProperty().bind(scene.heightProperty());
@@ -207,7 +194,7 @@ public class UniversalModelConverter extends Application {
 
     public void assimpOpen(File file) throws IOException {
 
-        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_Triangulate | aiProcess_PreTransformVertices);
+        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_Triangulate | aiProcess_PreTransformVertices |aiProcess_GenNormals);
         AINode root = scene.mRootNode();
         System.out.println(root.mName().dataString());
         System.out.println(root.mNumChildren());
@@ -236,8 +223,6 @@ public class UniversalModelConverter extends Application {
                 AIFace.Buffer facesBuffer = mesh.mFaces();
                 for (int i = 0; i < faceCount; ++i) {
                     AIFace face = facesBuffer.get(i);
-                    // System.out.println(face.toString());
-                    // System.out.println("____________________________________________________");
                     System.out.println(i + "/" + faceCount);
 
                     if (face.mNumIndices() != 3) {
