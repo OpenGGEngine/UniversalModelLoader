@@ -47,15 +47,24 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextAlignment;
+import org.lwjgl.assimp.AIColor4D;
 import org.lwjgl.assimp.AIFace;
+import org.lwjgl.assimp.AIMaterial;
 import org.lwjgl.assimp.AIMesh;
 import org.lwjgl.assimp.AINode;
 import org.lwjgl.assimp.AIScene;
+import org.lwjgl.assimp.AIString;
 import org.lwjgl.assimp.AIVector3D;
+import static org.lwjgl.assimp.Assimp.AI_MATKEY_COLOR_DIFFUSE;
+import static org.lwjgl.assimp.Assimp.aiGetErrorString;
+import static org.lwjgl.assimp.Assimp.aiGetMaterialColor;
+import static org.lwjgl.assimp.Assimp.aiGetMaterialTexture;
 import static org.lwjgl.assimp.Assimp.aiImportFile;
 import static org.lwjgl.assimp.Assimp.aiProcess_GenNormals;
 import static org.lwjgl.assimp.Assimp.aiProcess_PreTransformVertices;
 import static org.lwjgl.assimp.Assimp.aiProcess_Triangulate;
+import static org.lwjgl.assimp.Assimp.aiTextureType_DIFFUSE;
+import static org.lwjgl.assimp.Assimp.aiTextureType_NONE;
 
 /**
  *
@@ -142,7 +151,7 @@ public class UniversalModelConverter extends Application {
         text3.setFont(new Font(15));
         text3.setWrappingWidth(450);
         text3.setTextAlignment(TextAlignment.JUSTIFY);
-        text3.setText("Alpha Release: Materials Not Supported. Expect Bugs \n \n NOTE: When loading your OBJs with MTLs, the MTL must be in the same directory as the OBJ file. Otherwise the OBJ will not load correctly. Sometimes the program will appear to stall. This is assimp and this behavior is perfectly normal.");
+        text3.setText("Alpha Release: 1.1. Only diffuse textures supported. Expect Bugs \n \n NOTE: When loading your OBJs with MTLs, the MTL must be in the same directory as the OBJ file. Otherwise the OBJ will not load correctly. Sometimes the program will appear to stall. This is assimp and this behavior is perfectly normal.");
 
         Tab assimptab = new Tab("Assimp Loader");
         VBox box1 = new VBox(30);
@@ -189,12 +198,14 @@ public class UniversalModelConverter extends Application {
     }
 
     public static void main(String[] args) {
+
         Application.launch(args);
     }
 
     public void assimpOpen(File file) throws IOException {
 
-        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_Triangulate | aiProcess_PreTransformVertices |aiProcess_GenNormals);
+        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_GenNormals);
+        System.out.println(scene.mNumTextures());
         AINode root = scene.mRootNode();
         System.out.println(root.mName().dataString());
         System.out.println(root.mNumChildren());
@@ -214,10 +225,27 @@ public class UniversalModelConverter extends Application {
                     }
             );
             List<Face> facelist = new ArrayList<>();
-            for (int root3 = 0; root3 < node.mMeshes().remaining(); root3++) {
-                int adress2 = node.mMeshes().get(root3);
+           //note that due to the current setup, there is only one mesh per node.
 
+            for (int root3 = 0; root3 < 1; root3++) {
+
+                int adress2 = node.mMeshes().get(0);
                 AIMesh mesh = AIMesh.create(scene.mMeshes().get(adress2));
+                int materialindex = mesh.mMaterialIndex();
+                AIMaterial dumb = AIMaterial.create(scene.mMaterials().get(materialindex));
+
+                Material mat = new Material(dumb.toString());
+                AIString path = AIString.create();
+                //The worst function parameters known to mankind
+                aiGetMaterialTexture(dumb, aiTextureType_DIFFUSE, 0, path, new int[100], new int[100], new float[100], new int[100], new int[100], new int[100]);
+
+                System.out.println(path.dataString());
+
+                AIColor4D mDiffuseColor = AIColor4D.create();
+                if (aiGetMaterialColor(dumb, AI_MATKEY_COLOR_DIFFUSE,
+                        aiTextureType_NONE, 0, mDiffuseColor) != 0) {
+                    throw new IllegalStateException(aiGetErrorString());
+                }
                 int faceCount = mesh.mNumFaces();
                 int elementCount = faceCount * 3;
                 AIFace.Buffer facesBuffer = mesh.mFaces();
@@ -266,10 +294,12 @@ public class UniversalModelConverter extends Application {
                     facelist.add(faces);
 
                 }
+                
+                mat.mapKdFilename = path.dataString();
+                Mesh mesh1 = new Mesh(facelist, mat);
+                meshes.add(mesh1);
             }
 
-            Mesh mesh = new Mesh(facelist, Material.defaultmaterial);
-            meshes.add(mesh);
         }
         Model model = new Model("shit", meshes);
         String endloc = file.getAbsolutePath().replace("shit", "");
