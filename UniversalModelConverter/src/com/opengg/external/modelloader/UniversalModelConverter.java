@@ -29,6 +29,8 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import com.opengg.external.modelloader.loaders.obj.OBJParser;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -240,7 +242,7 @@ public class UniversalModelConverter extends Application {
                 aiGetMaterialTexture(dumb, aiTextureType_DIFFUSE, 0, path, new int[100], new int[100], new float[100], new int[100], new int[100], new int[100]);
 
                 System.out.println(path.dataString());
-
+                
                 AIColor4D mDiffuseColor = AIColor4D.create();
                 if (aiGetMaterialColor(dumb, AI_MATKEY_COLOR_DIFFUSE,
                         aiTextureType_NONE, 0, mDiffuseColor) != 0) {
@@ -294,8 +296,15 @@ public class UniversalModelConverter extends Application {
                     facelist.add(faces);
 
                 }
+                if(!path.dataString().isEmpty()){
+                    //This strips the path down to the filename alone.
+                    Path tempp = Paths.get(path.dataString());
                 
-                mat.mapKdFilename = path.dataString();
+                    String filetemp = tempp.getFileName().toString();
+                    System.out.println(filetemp);
+                    mat.mapKdFilename = filetemp;
+                }
+                
                 Mesh mesh1 = new Mesh(facelist, mat);
                 meshes.add(mesh1);
             }
