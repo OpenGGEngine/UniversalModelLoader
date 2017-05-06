@@ -5,11 +5,7 @@
  */
 package com.opengg.external.modelloader;
 
-import com.opengg.core.math.Vector2f;
-import com.opengg.core.math.Vector3f;
 import com.opengg.core.model.Build;
-import com.opengg.core.model.Face;
-import com.opengg.core.model.FaceVertex;
 import com.opengg.core.model.Material;
 import com.opengg.core.model.Mesh;
 import com.opengg.core.model.Model;
@@ -29,11 +25,12 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import com.opengg.external.modelloader.loaders.obj.OBJParser;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
@@ -57,16 +54,18 @@ import org.lwjgl.assimp.AINode;
 import org.lwjgl.assimp.AIScene;
 import org.lwjgl.assimp.AIString;
 import org.lwjgl.assimp.AIVector3D;
-import static org.lwjgl.assimp.Assimp.AI_MATKEY_COLOR_DIFFUSE;
-import static org.lwjgl.assimp.Assimp.aiGetErrorString;
-import static org.lwjgl.assimp.Assimp.aiGetMaterialColor;
 import static org.lwjgl.assimp.Assimp.aiGetMaterialTexture;
 import static org.lwjgl.assimp.Assimp.aiImportFile;
-import static org.lwjgl.assimp.Assimp.aiProcess_GenNormals;
+import static org.lwjgl.assimp.Assimp.aiProcess_GenSmoothNormals;
+import static org.lwjgl.assimp.Assimp.aiProcess_JoinIdenticalVertices;
+import static org.lwjgl.assimp.Assimp.aiProcess_OptimizeMeshes;
 import static org.lwjgl.assimp.Assimp.aiProcess_PreTransformVertices;
+import static org.lwjgl.assimp.Assimp.aiProcess_RemoveRedundantMaterials;
 import static org.lwjgl.assimp.Assimp.aiProcess_Triangulate;
 import static org.lwjgl.assimp.Assimp.aiTextureType_DIFFUSE;
-import static org.lwjgl.assimp.Assimp.aiTextureType_NONE;
+import static org.lwjgl.assimp.Assimp.aiTextureType_HEIGHT;
+import static org.lwjgl.assimp.Assimp.aiTextureType_NORMALS;
+import static org.lwjgl.assimp.Assimp.aiTextureType_SHININESS;
 
 /**
  *
@@ -78,6 +77,7 @@ public class UniversalModelConverter extends Application {
     final Button openButton = new Button("Choose model...");
     public Label progress = new Label("Temp", nodelist);
     public volatile double percent;
+    public static int wow;
 
     public class MyRunnable implements Runnable {
 
@@ -89,18 +89,22 @@ public class UniversalModelConverter extends Application {
 
         @Override
         public void run() {
+            // try {
+            openButton.setVisible(false);
+            nodelist.setVisible(true);
+            progress.setVisible(true);
             try {
-                openButton.setVisible(false);
-                nodelist.setVisible(true);
-                progress.setVisible(true);
-                assimpOpen(file);
-                nodelist.setVisible(false);
-                progress.setVisible(false);
-                openButton.setVisible(true);
-                // code in the other thread, can reference "var" variable
+                assimpOpen2(file);
             } catch (IOException ex) {
                 Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
             }
+            nodelist.setVisible(false);
+            progress.setVisible(false);
+            openButton.setVisible(true);
+            // code in the other thread, can reference "var" variable
+            //  } catch (IOException ex) {
+            //     Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
+            //  }
         }
     }
 
@@ -153,7 +157,7 @@ public class UniversalModelConverter extends Application {
         text3.setFont(new Font(15));
         text3.setWrappingWidth(450);
         text3.setTextAlignment(TextAlignment.JUSTIFY);
-        text3.setText("Alpha Release: 1.1. Only diffuse textures supported. Expect Bugs \n \n NOTE: When loading your OBJs with MTLs, the MTL must be in the same directory as the OBJ file. Otherwise the OBJ will not load correctly. Sometimes the program will appear to stall. This is assimp and this behavior is perfectly normal.");
+        text3.setText("Alpha Release: 1.3. Diffuse, specular and normal map textures supported. Expect Bugs \n \n NOTE: When loading your OBJs with MTLs, the MTL must be in the same directory as the OBJ file. Otherwise the OBJ will not load correctly. Sometimes the program will appear to stall. This is assimp and this behavior is perfectly normal.");
 
         Tab assimptab = new Tab("Assimp Loader");
         VBox box1 = new VBox(30);
@@ -163,20 +167,19 @@ public class UniversalModelConverter extends Application {
         progress.setVisible(false);
         box1.getChildren().addAll(text3, openButton, progress, nodelist);
 
-        Text text = new Text();
-        text.setFont(new Font(15));
-        text.setWrappingWidth(350);
-        text.setTextAlignment(TextAlignment.JUSTIFY);
-        text.setText("This is the legacy OBJ loader. "
+        Text text = new Text("DO NOT USE.\n"
+                + "This is the legacy OBJ loader. "
                 + "It doesn't load other types of models. "
                 + "If you want that, you should use the new Assimp Loader."
                 + " Loading Non-OBJ files will result in disaster.");
+        text.setFont(new Font(15));
+        text.setWrappingWidth(350);
+        text.setTextAlignment(TextAlignment.JUSTIFY);
 
-        Text text2 = new Text();
+        Text text2 = new Text("Legacy OBJ Loader");
         text2.setFont(new Font(20));
         text2.setWrappingWidth(200);
         text2.setTextAlignment(TextAlignment.CENTER);
-        text2.setText("Legacy OBJ Loader");
 
         Tab legacytab = new Tab("Legacy OBJ Loader");
         VBox box2 = new VBox(25);
@@ -204,116 +207,117 @@ public class UniversalModelConverter extends Application {
         Application.launch(args);
     }
 
-    public void assimpOpen(File file) throws IOException {
-
-        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_GenNormals);
-        System.out.println(scene.mNumTextures());
-        AINode root = scene.mRootNode();
-        System.out.println(root.mName().dataString());
-        System.out.println(root.mNumChildren());
-
+    public void assimpOpen2(File file) throws IOException {
         List<Mesh> meshes = new ArrayList<>();
-        for (int root2 = 0; root2 < root.mChildren().remaining(); root2++) {
-            System.out.println("Root " + root2);
-            long address = root.mChildren().get(root2);
-            AINode node = AINode.create(address);
-            percent = (root2 + 1) / (double) root.mNumChildren();
-            final int yeah = root2 + 1;
-            final int yeah2 = root.mNumChildren();
-            Platform.runLater(
-                    () -> {
-                        nodelist.setProgress(percent);
-                        progress.setText("Node: " + yeah + "/" + yeah2);
-                    }
-            );
-            List<Face> facelist = new ArrayList<>();
-           //note that due to the current setup, there is only one mesh per node.
-
-            for (int root3 = 0; root3 < 1; root3++) {
-
-                int adress2 = node.mMeshes().get(0);
-                AIMesh mesh = AIMesh.create(scene.mMeshes().get(adress2));
-                int materialindex = mesh.mMaterialIndex();
-                AIMaterial dumb = AIMaterial.create(scene.mMaterials().get(materialindex));
-
-                Material mat = new Material(dumb.toString());
-                AIString path = AIString.create();
-                //The worst function parameters known to mankind
-                aiGetMaterialTexture(dumb, aiTextureType_DIFFUSE, 0, path, new int[100], new int[100], new float[100], new int[100], new int[100], new int[100]);
-
-                System.out.println(path.dataString());
-                
-                AIColor4D mDiffuseColor = AIColor4D.create();
-                if (aiGetMaterialColor(dumb, AI_MATKEY_COLOR_DIFFUSE,
-                        aiTextureType_NONE, 0, mDiffuseColor) != 0) {
-                    throw new IllegalStateException(aiGetErrorString());
-                }
-                int faceCount = mesh.mNumFaces();
-                int elementCount = faceCount * 3;
-                AIFace.Buffer facesBuffer = mesh.mFaces();
-                for (int i = 0; i < faceCount; ++i) {
-                    AIFace face = facesBuffer.get(i);
-                    System.out.println(i + "/" + faceCount);
-
-                    if (face.mNumIndices() != 3) {
-                        throw new IllegalStateException("Uh Oh, Triangulation Messed Up. AIFace.mNumIndices() != 3");
-                    }
-                    Face faces = new Face();
-
-                    for (int i2 = 0; i2 < 3; i2++) {
-                        FaceVertex fv = new FaceVertex();
-                        int index = face.mIndices().get(i2);
-                        //mesh.mNormals()
-                        AIVector3D vertex = mesh.mVertices().get(index);
-                        Vector3f vertex1 = new Vector3f(vertex.x(), vertex.y(), vertex.z());
-
-                        AIVector3D normal = mesh.mNormals().get(index);
-                        Vector3f normal1 = new Vector3f(normal.x(), normal.y(), normal.z());
-
-                        AIVector3D texture = mesh.mTextureCoords(0).get(index);
-                        Vector2f texturecoord = new Vector2f(texture.x(), texture.y());
-                        //   System.out.println(texturecoord.toString());
-                        fv.t = texturecoord;
-                        fv.v = vertex1;
-                        fv.n = normal1;
-                        // System.out.println(fv.toString());
-                        switch (i2) {
-                            case 0:
-                                faces.v1 = fv;
-                                break;
-                            case 1:
-                                faces.v2 = fv;
-                                break;
-
-                            case 2:
-
-                                faces.v3 = fv;
-                                break;
-                        }
-
-                        // mesh.mTextureCoords()
-                    }
-                    facelist.add(faces);
-
-                }
-                if(!path.dataString().isEmpty()){
-                    //This strips the path down to the filename alone.
-                    Path tempp = Paths.get(path.dataString());
-                
-                    String filetemp = tempp.getFileName().toString();
-                    System.out.println(filetemp);
-                    mat.mapKdFilename = filetemp;
-                }
-                
-                Mesh mesh1 = new Mesh(facelist, mat);
-                meshes.add(mesh1);
-            }
-
-        }
-        Model model = new Model("shit", meshes);
+        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_JoinIdenticalVertices | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_Triangulate
+                | aiProcess_PreTransformVertices | aiProcess_GenSmoothNormals);
+        processNode(scene.mRootNode(), scene, meshes);
+        Model model = new Model("", meshes);
         String endloc = file.getAbsolutePath().replace("shit", "");
         model.putData(endloc);
 
+    }
+
+    public void processNode(AINode node, AIScene scene, List<Mesh> meshes) {
+
+        percent = (wow + 1) / (double) scene.mRootNode().mNumChildren();
+        final int yeah = wow + 1;
+        final int yeah2 = scene.mRootNode().mNumChildren();
+        Platform.runLater(
+                () -> {
+                    nodelist.setProgress(percent);
+                    progress.setText("Node: " + yeah + "/" + yeah2);
+                }
+        );
+        // Process all the node's meshes (if any)
+        for (int i = 0; i < node.mNumMeshes(); i++) {
+            AIMesh mesh = AIMesh.create(scene.mMeshes().get(node.mMeshes().get(i)));
+            meshes.add(processMesh(mesh, scene));
+        }
+        // Then do the same for each of its children
+        for (int i = 0; i < node.mNumChildren(); i++) {
+            processNode(AINode.create(node.mChildren().get(i)), scene, meshes);
+        }
+        wow++;
+    }
+
+    public Mesh processMesh(AIMesh mesh, AIScene scene) {
+        FloatBuffer vertices = FloatBuffer.allocate(mesh.mNumVertices() * 12);
+        IntBuffer indices = IntBuffer.allocate(mesh.mNumFaces() * 3);
+        // vector<GLuint> indices;
+
+        //Process Vertices
+        for (int i = 0; i < mesh.mNumVertices(); i++) {
+            //Vertex Position
+            AIVector3D vertex = mesh.mVertices().get(i);
+            vertices.put(vertex.x()).put(vertex.y()).put(vertex.z());
+
+            //Vertex Colors currntly disabled
+            if (false) {
+                AIColor4D colors = AIColor4D.create(mesh.mColors().get(i));
+
+                vertices.put(colors.r()).put(colors.g()).put(colors.b()).put(colors.a());
+            } else {
+                vertices.put(1f).put(1f).put(1f).put(1f);
+            }
+
+            //Vertex Normal
+            AIVector3D normal = mesh.mNormals().get(i);
+            vertices.put(normal.x()).put(normal.y()).put(normal.z());
+
+            //Texture Coordinates
+            if(mesh.mNumUVComponents().get(0) != 0){
+            AIVector3D texture = mesh.mTextureCoords(0).get(i);
+            vertices.put(texture.x()).put(texture.y());
+            }else{
+                vertices.put(0).put(0);
+            }
+        }
+        // Process indices
+        for (int i = 0; i < mesh.mNumFaces(); i++) {
+            AIFace face = mesh.mFaces().get(i);
+            indices.put(face.mIndices());
+
+        }
+
+        // Process material
+        System.out.println(mesh.mMaterialIndex() >= 0);
+        Material mat = (mesh.mMaterialIndex() >= 0) ? processMaterial(AIMaterial.create(scene.mMaterials().get(mesh.mMaterialIndex()))) : Material.defaultmaterial;
+        vertices.flip();
+        indices.flip();
+
+        return new Mesh(vertices, indices, mat);
+    }
+
+    public Material processMaterial(AIMaterial material) {
+        Material mat = new Material(material.toString());
+        AIString diffusemap = AIString.create();
+        AIString specmap = AIString.create();
+        AIString normmap = AIString.create();
+        //The worst function parameters known to mankind
+        aiGetMaterialTexture(material, aiTextureType_DIFFUSE, 0, diffusemap, null, null, null, null, null, new int[100]);
+        aiGetMaterialTexture(material, aiTextureType_SHININESS, 0, specmap, null, null, null, null, null, new int[100]);
+        aiGetMaterialTexture(material, aiTextureType_HEIGHT, 0, normmap, null, null, null, null, null, new int[100]);
+        if (!diffusemap.dataString().isEmpty()) {
+            mat.mapKdFilename = garbo(diffusemap);
+        }
+
+        if (!specmap.dataString().isEmpty()) {
+            mat.mapNsFilename = garbo(specmap);
+            mat.hasspecmap = true;
+        }
+
+        if (!normmap.dataString().isEmpty()) {
+            mat.bumpFilename = garbo(normmap);
+            mat.hasnormmap = true;
+        }
+
+        return mat;
+    }
+
+    public String garbo(AIString a) {
+        Path p = Paths.get(a.dataString());
+        return p.getFileName().toString();
     }
 
     private void openFile(File file) throws IOException {
@@ -322,15 +326,18 @@ public class UniversalModelConverter extends Application {
             OBJParser p = new OBJParser(b, file.getAbsolutePath());
 
         } catch (IOException ex) {
-            Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(UniversalModelConverter.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
         Model m = new Model(b);
         try {
             String endloc = file.getAbsolutePath().replace(b.getObjectFileName(), "");
             System.out.println(endloc);
             m.putData(endloc);
+
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(UniversalModelConverter.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -463,12 +470,15 @@ public class UniversalModelConverter extends Application {
                     name += in.readChar();
                 }
                 System.out.println(name);
+
             }
 
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(UniversalModelConverter.class
+                    .getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(UniversalModelConverter.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(UniversalModelConverter.class
+                    .getName()).log(Level.SEVERE, null, ex);
         }
     }
 
