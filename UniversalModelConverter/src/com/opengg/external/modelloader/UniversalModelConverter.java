@@ -5,35 +5,33 @@
  */
 package com.opengg.external.modelloader;
 
+import com.opengg.core.engine.OpenGG;
 import com.opengg.core.model.Build;
 import com.opengg.core.model.Material;
 import com.opengg.core.model.Mesh;
 import com.opengg.core.model.Model;
 import static com.opengg.core.util.FileUtil.getFileName;
+import com.opengg.external.modelloader.loaders.obj.OBJParser;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javafx.application.Application;
-import javafx.event.ActionEvent;
-import javafx.scene.Scene;
-import javafx.scene.control.Button;
-import javafx.scene.layout.VBox;
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-import com.opengg.external.modelloader.loaders.obj.OBJParser;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.event.ActionEvent;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Tab;
@@ -42,10 +40,13 @@ import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextAlignment;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 import org.lwjgl.assimp.AIColor4D;
 import org.lwjgl.assimp.AIFace;
 import org.lwjgl.assimp.AIMaterial;
@@ -64,8 +65,9 @@ import static org.lwjgl.assimp.Assimp.aiProcess_RemoveRedundantMaterials;
 import static org.lwjgl.assimp.Assimp.aiProcess_Triangulate;
 import static org.lwjgl.assimp.Assimp.aiTextureType_DIFFUSE;
 import static org.lwjgl.assimp.Assimp.aiTextureType_HEIGHT;
-import static org.lwjgl.assimp.Assimp.aiTextureType_NORMALS;
 import static org.lwjgl.assimp.Assimp.aiTextureType_SHININESS;
+import static org.lwjgl.assimp.Assimp.aiTextureType_SPECULAR;
+import org.lwjgl.system.MemoryUtil;
 
 /**
  *
@@ -111,6 +113,7 @@ public class UniversalModelConverter extends Application {
     @Override
     public void start(final Stage stage) {
         stage.setTitle("Universal Model Converter. Now Fully Universal.");
+        OpenGG.linkLWJGL();
         Group root = new Group();
         Scene scene = new Scene(root, 600, 450, Color.WHITE);
         TabPane tabPane = new TabPane();
@@ -143,7 +146,6 @@ public class UniversalModelConverter extends Application {
             }
         });
 
-        System.out.println(UniversalModelConverter.class.getResource("derpy.png").getPath().substring(1));
         Image image = new Image(UniversalModelConverter.class.getResource("derpy.png").toExternalForm());
 
         // simple displays ImageView the image as is
@@ -157,7 +159,10 @@ public class UniversalModelConverter extends Application {
         text3.setFont(new Font(15));
         text3.setWrappingWidth(450);
         text3.setTextAlignment(TextAlignment.JUSTIFY);
-        text3.setText("Alpha Release: 1.3. Diffuse, specular and normal map textures supported. Expect Bugs \n \n NOTE: When loading your OBJs with MTLs, the MTL must be in the same directory as the OBJ file. Otherwise the OBJ will not load correctly. Sometimes the program will appear to stall. This is assimp and this behavior is perfectly normal.");
+        text3.setText("Alpha Release: 1.3. Diffuse, specular and normal map textures supported. Expect Bugs \n \n "
+                + "NOTE: When loading your OBJs with MTLs, the MTL must be in the same directory as the OBJ file. "
+                + "Otherwise the OBJ will not load correctly. Sometimes the program will appear to stall. "
+                + "This is assimp and this behavior is perfectly normal.");
 
         Tab assimptab = new Tab("Assimp Loader");
         VBox box1 = new VBox(30);
@@ -242,8 +247,8 @@ public class UniversalModelConverter extends Application {
     }
 
     public Mesh processMesh(AIMesh mesh, AIScene scene) {
-        FloatBuffer vertices = FloatBuffer.allocate(mesh.mNumVertices() * 12);
-        IntBuffer indices = IntBuffer.allocate(mesh.mNumFaces() * 3);
+        FloatBuffer vertices = MemoryUtil.memAllocFloat(mesh.mNumVertices() * 12);
+        IntBuffer indices = MemoryUtil.memAllocInt(mesh.mNumFaces() * 3);
         // vector<GLuint> indices;
 
         //Process Vertices
@@ -267,8 +272,8 @@ public class UniversalModelConverter extends Application {
 
             //Texture Coordinates
             if(mesh.mNumUVComponents().get(0) != 0){
-            AIVector3D texture = mesh.mTextureCoords(0).get(i);
-            vertices.put(texture.x()).put(texture.y());
+                AIVector3D texture = mesh.mTextureCoords(0).get(i);
+                vertices.put(texture.x()).put(texture.y());
             }else{
                 vertices.put(0).put(0);
             }
@@ -281,7 +286,6 @@ public class UniversalModelConverter extends Application {
         }
 
         // Process material
-        System.out.println(mesh.mMaterialIndex() >= 0);
         Material mat = (mesh.mMaterialIndex() >= 0) ? processMaterial(AIMaterial.create(scene.mMaterials().get(mesh.mMaterialIndex()))) : Material.defaultmaterial;
         vertices.flip();
         indices.flip();
@@ -294,22 +298,31 @@ public class UniversalModelConverter extends Application {
         AIString diffusemap = AIString.create();
         AIString specmap = AIString.create();
         AIString normmap = AIString.create();
+        AIString specpowmap = AIString.create();
         //The worst function parameters known to mankind
         aiGetMaterialTexture(material, aiTextureType_DIFFUSE, 0, diffusemap, null, null, null, null, null, new int[100]);
-        aiGetMaterialTexture(material, aiTextureType_SHININESS, 0, specmap, null, null, null, null, null, new int[100]);
+        aiGetMaterialTexture(material, aiTextureType_SPECULAR, 0, specmap, null, null, null, null, null, new int[100]);
         aiGetMaterialTexture(material, aiTextureType_HEIGHT, 0, normmap, null, null, null, null, null, new int[100]);
+        aiGetMaterialTexture(material, aiTextureType_SHININESS, 0, specpowmap, null, null, null, null, null, new int[100]);
+        
         if (!diffusemap.dataString().isEmpty()) {
             mat.mapKdFilename = garbo(diffusemap);
+            mat.hascolmap = true;
         }
 
         if (!specmap.dataString().isEmpty()) {
-            mat.mapNsFilename = garbo(specmap);
+            mat.mapKsFilename = garbo(specmap);
             mat.hasspecmap = true;
         }
 
         if (!normmap.dataString().isEmpty()) {
             mat.bumpFilename = garbo(normmap);
             mat.hasnormmap = true;
+        }
+        
+        if(!specpowmap.dataString().isEmpty()){
+            mat.mapNsFilename= garbo(specpowmap);
+            mat.hasspecpow = true;
         }
 
         return mat;
