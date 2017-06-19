@@ -5,8 +5,9 @@
  */
 package com.opengg.external.modelloader;
 
-import com.opengg.core.engine.OpenGG;
+import com.opengg.core.math.Vector3f;
 import com.opengg.core.model.Build;
+import com.opengg.core.model.Face;
 import com.opengg.core.model.Material;
 import com.opengg.core.model.Mesh;
 import com.opengg.core.model.Model;
@@ -22,6 +23,7 @@ import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -55,16 +57,25 @@ import org.lwjgl.assimp.AINode;
 import org.lwjgl.assimp.AIScene;
 import org.lwjgl.assimp.AIString;
 import org.lwjgl.assimp.AIVector3D;
-import static org.lwjgl.assimp.Assimp.aiGetMaterialTexture;
+import org.lwjgl.assimp.Assimp;
+import static org.lwjgl.assimp.Assimp.AI_MATKEY_COLOR_AMBIENT;
+import static org.lwjgl.assimp.Assimp.AI_MATKEY_COLOR_DIFFUSE;
+import static org.lwjgl.assimp.Assimp.AI_MATKEY_COLOR_SPECULAR;
+import static org.lwjgl.assimp.Assimp.aiGetMaterialColor;
+import static org.lwjgl.assimp.Assimp.aiGetMaterialTextureCount;
 import static org.lwjgl.assimp.Assimp.aiImportFile;
+import static org.lwjgl.assimp.Assimp.aiProcess_FindInvalidData;
 import static org.lwjgl.assimp.Assimp.aiProcess_GenSmoothNormals;
+import static org.lwjgl.assimp.Assimp.aiProcess_ImproveCacheLocality;
 import static org.lwjgl.assimp.Assimp.aiProcess_JoinIdenticalVertices;
 import static org.lwjgl.assimp.Assimp.aiProcess_OptimizeMeshes;
 import static org.lwjgl.assimp.Assimp.aiProcess_PreTransformVertices;
 import static org.lwjgl.assimp.Assimp.aiProcess_RemoveRedundantMaterials;
 import static org.lwjgl.assimp.Assimp.aiProcess_Triangulate;
+import static org.lwjgl.assimp.Assimp.aiReturn_SUCCESS;
 import static org.lwjgl.assimp.Assimp.aiTextureType_DIFFUSE;
 import static org.lwjgl.assimp.Assimp.aiTextureType_HEIGHT;
+import static org.lwjgl.assimp.Assimp.aiTextureType_NONE;
 import static org.lwjgl.assimp.Assimp.aiTextureType_SHININESS;
 import static org.lwjgl.assimp.Assimp.aiTextureType_SPECULAR;
 import org.lwjgl.system.MemoryUtil;
@@ -113,7 +124,6 @@ public class UniversalModelConverter extends Application {
     @Override
     public void start(final Stage stage) {
         stage.setTitle("Universal Model Converter. Now Fully Universal.");
-        OpenGG.linkLWJGL();
         Group root = new Group();
         Scene scene = new Scene(root, 600, 450, Color.WHITE);
         TabPane tabPane = new TabPane();
@@ -214,11 +224,14 @@ public class UniversalModelConverter extends Application {
 
     public void assimpOpen2(File file) throws IOException {
         List<Mesh> meshes = new ArrayList<>();
-        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_JoinIdenticalVertices | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_Triangulate
+        AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_ImproveCacheLocality | aiProcess_FindInvalidData | aiProcess_JoinIdenticalVertices | aiProcess_RemoveRedundantMaterials | aiProcess_OptimizeMeshes | aiProcess_Triangulate
                 | aiProcess_PreTransformVertices | aiProcess_GenSmoothNormals);
+        //AIScene scene = aiImportFile(file.getAbsolutePath(), aiProcess_PreTransformVertices);
         processNode(scene.mRootNode(), scene, meshes);
+        System.out.println("weedidit");
         Model model = new Model("", meshes);
         String endloc = file.getAbsolutePath().replace("shit", "");
+
         model.putData(endloc);
 
     }
@@ -242,6 +255,7 @@ public class UniversalModelConverter extends Application {
         // Then do the same for each of its children
         for (int i = 0; i < node.mNumChildren(); i++) {
             processNode(AINode.create(node.mChildren().get(i)), scene, meshes);
+
         }
         wow++;
     }
@@ -271,10 +285,10 @@ public class UniversalModelConverter extends Application {
             vertices.put(normal.x()).put(normal.y()).put(normal.z());
 
             //Texture Coordinates
-            if(mesh.mNumUVComponents().get(0) != 0){
+            if (mesh.mNumUVComponents().get(0) != 0) {
                 AIVector3D texture = mesh.mTextureCoords(0).get(i);
                 vertices.put(texture.x()).put(texture.y());
-            }else{
+            } else {
                 vertices.put(0).put(0);
             }
         }
@@ -284,53 +298,77 @@ public class UniversalModelConverter extends Application {
             indices.put(face.mIndices());
 
         }
-
         // Process material
         Material mat = (mesh.mMaterialIndex() >= 0) ? processMaterial(AIMaterial.create(scene.mMaterials().get(mesh.mMaterialIndex()))) : Material.defaultmaterial;
         vertices.flip();
         indices.flip();
-
         return new Mesh(vertices, indices, mat);
     }
-
+   
     public Material processMaterial(AIMaterial material) {
         Material mat = new Material(material.toString());
-        AIString diffusemap = AIString.create();
-        AIString specmap = AIString.create();
-        AIString normmap = AIString.create();
-        AIString specpowmap = AIString.create();
         //The worst function parameters known to mankind
-        aiGetMaterialTexture(material, aiTextureType_DIFFUSE, 0, diffusemap, null, null, null, null, null, new int[100]);
-        aiGetMaterialTexture(material, aiTextureType_SPECULAR, 0, specmap, null, null, null, null, null, new int[100]);
-        aiGetMaterialTexture(material, aiTextureType_HEIGHT, 0, normmap, null, null, null, null, null, new int[100]);
-        aiGetMaterialTexture(material, aiTextureType_SHININESS, 0, specpowmap, null, null, null, null, null, new int[100]);
+        AIColor4D colour = AIColor4D.create();
+
+        AIString path = AIString.calloc();
+        int result = Assimp.aiGetMaterialTexture(material, aiTextureType_DIFFUSE, 0, path, (IntBuffer) null, null, null, null, null, null);
+        String textPath = path.dataString();
         
-        if (!diffusemap.dataString().isEmpty()) {
-            mat.mapKdFilename = garbo(diffusemap);
+        if (result == aiReturn_SUCCESS && (aiGetMaterialTextureCount(material, aiTextureType_DIFFUSE) >0)) {
+            Path p = Paths.get(textPath);
+            mat.mapKdFilename = p.getFileName().toString();
             mat.hascolmap = true;
         }
 
-        if (!specmap.dataString().isEmpty()) {
-            mat.mapKsFilename = garbo(specmap);
+        AIString path2 = AIString.calloc();
+        result = Assimp.aiGetMaterialTexture(material, aiTextureType_SPECULAR, 0, path2, (IntBuffer) null, null, null, null, null, null);
+        String textPath2 = path2.dataString();
+        if (result == aiReturn_SUCCESS && (aiGetMaterialTextureCount(material, aiTextureType_SPECULAR) >0)) {
+            Path p = Paths.get(textPath2);
+            mat.mapKsFilename = p.getFileName().toString();
             mat.hasspecmap = true;
         }
 
-        if (!normmap.dataString().isEmpty()) {
-            mat.bumpFilename = garbo(normmap);
+        AIString path3 = AIString.calloc();
+        result = Assimp.aiGetMaterialTexture(material, aiTextureType_HEIGHT, 0, path3, (IntBuffer) null, null, null, null, null, null);
+        String textPath3 = path3.dataString();
+        if (result == aiReturn_SUCCESS && (aiGetMaterialTextureCount(material,  aiTextureType_HEIGHT) >0)) {
+            Path p = Paths.get(textPath3);
+            mat.bumpFilename = p.getFileName().toString();
             mat.hasnormmap = true;
         }
-        
-        if(!specpowmap.dataString().isEmpty()){
-            mat.mapNsFilename= garbo(specpowmap);
+
+        AIString path4 = AIString.calloc();
+        result = Assimp.aiGetMaterialTexture(material, aiTextureType_SHININESS, 0, path4, (IntBuffer) null, null, null, null, null, null);
+        String textPath4 = path4.dataString();
+        if (result == aiReturn_SUCCESS && (aiGetMaterialTextureCount(material, aiTextureType_SHININESS) >0)) {
+            Path p = Paths.get(textPath4);
+            mat.mapNsFilename = p.getFileName().toString();
             mat.hasspecpow = true;
         }
 
-        return mat;
-    }
+        Vector3f ambient = new Vector3f(1, 1, 1);
+        result = aiGetMaterialColor(material, AI_MATKEY_COLOR_AMBIENT, aiTextureType_NONE, 0, colour);
+        if (result == 0) {
+            ambient = new Vector3f(colour.r(), colour.g(), colour.b());
+        }
+        mat.ka = ambient;
 
-    public String garbo(AIString a) {
-        Path p = Paths.get(a.dataString());
-        return p.getFileName().toString();
+        Vector3f diffuse = new Vector3f(1, 1, 1);
+        result = aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, aiTextureType_NONE, 0, colour);
+        if (result == 0) {
+            diffuse = new Vector3f(colour.r(), colour.g(), colour.b());
+        }
+        mat.kd = diffuse;
+
+        Vector3f specular = new Vector3f(1, 1, 1);
+        result = aiGetMaterialColor(material, AI_MATKEY_COLOR_SPECULAR, aiTextureType_NONE, 0, colour);
+        if (result == 0) {
+            specular = new Vector3f(colour.r(), colour.g(), colour.b());
+        }
+        mat.ks = specular;
+
+        return mat;
     }
 
     private void openFile(File file) throws IOException {
